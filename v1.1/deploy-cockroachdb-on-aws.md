@@ -81,7 +81,7 @@ Each CockroachDB node is an equally suitable SQL gateway to your cluster, but to
 AWS offers fully-managed load balancing to distribute traffic between instances.
 
 1. [Add AWS load balancing](http://docs.aws.amazon.com/AWSEC2/latest/UserGuide/ec2-increase-availability.html). Be sure to:
-    - Set forwarding rules to route TCP traffic from the load balancer's port **26257** to port **26257** on the node Droplets.
+    - Set forwarding rules to route TCP traffic from the load balancer's port **26257** to port **26257** on the nodes.
     - Configure health checks to use HTTP port **8080** and path `/health`.
 2. Note the provisioned **IP Address** for the load balancer. You'll use this later to test load balancing and to connect your application to the cluster.
 
