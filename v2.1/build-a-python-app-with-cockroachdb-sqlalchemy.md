@@ -34,7 +34,7 @@ $ pip install sqlalchemy cockroachdb
 
 For other ways to install SQLAlchemy, see the [official documentation](http://docs.sqlalchemy.org/en/latest/intro.html#installation-guide).
 
-{% include {{ page.version.version }}/app/common-steps.md %}
+{% include v2.1/app/common-steps-secure.md %}
 
 ## Step 5. Run the Python code
 
@@ -42,15 +42,15 @@ The following code uses the [SQLAlchemy ORM](https://docs.sqlalchemy.org/en/late
 ])` inserts rows into the table, and `session.query(Account)` selects from the table so that balances can be printed.
 
 {{site.data.alerts.callout_info}}
-The [cockroachdb python package](https://github.com/cockroachdb/cockroachdb-python) installed earlier is triggered by the `cockroachdb://` prefix in the engine URL. Using `postgres://` to connect to your cluster will not work.
+The <a href="https://github.com/cockroachdb/cockroachdb-python">cockroachdb python package</a> installed earlier is triggered by the <code>cockroachdb://</code> prefix in the engine URL. Using <code>postgres://</code> to connect to your cluster will not work.
 {{site.data.alerts.end}}
 
 Copy the code or
-<a href="https://raw.githubusercontent.com/cockroachdb/docs/master/_includes/{{ page.version.version }}/app/sqlalchemy-basic-sample.py" download>download it directly</a>.
+<a href="https://raw.githubusercontent.com/cockroachdb/docs/master/_includes/v2.1/app/sqlalchemy-basic-sample.py" download>download it directly</a>.
 
 {% include copy-clipboard.html %}
 ~~~ python
-{% include {{ page.version.version }}/app/sqlalchemy-basic-sample.py %}
+{% include v2.1/app/sqlalchemy-basic-sample.py %}
 ~~~
 
 Then run the code:
@@ -71,7 +71,7 @@ To verify that the table and rows were created successfully, you can again use t
 
 {% include copy-clipboard.html %}
 ~~~ shell
-$ cockroach sql --insecure -e 'SHOW TABLES' --database=bank
+$ cockroach sql --certs-dir=/tmp/certs -e 'SHOW TABLES' --database=bank
 ~~~
 
 ~~~
@@ -85,7 +85,7 @@ $ cockroach sql --insecure -e 'SHOW TABLES' --database=bank
 
 {% include copy-clipboard.html %}
 ~~~ shell
-$ cockroach sql --insecure -e 'SELECT id, balance FROM accounts' --database=bank
+$ cockroach sql --certs-dir=/tmp/certs -e 'SELECT id, balance FROM accounts' --database=bank
 ~~~
 
 ~~~
@@ -102,4 +102,4 @@ $ cockroach sql --insecure -e 'SELECT id, balance FROM accounts' --database=bank
 
 Read more about using the [SQLAlchemy ORM](https://docs.sqlalchemy.org/en/latest/), or check out a more realistic implementation of SQLAlchemy with CockroachDB in our [`examples-orms`](https://github.com/cockroachdb/examples-orms) repository.
 
-{% include {{ page.version.version }}/app/see-also-links.md %}
+{% include v2.1/app/see-also-links.md %}
