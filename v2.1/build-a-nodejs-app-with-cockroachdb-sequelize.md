@@ -18,25 +18,30 @@ We have tested the [Node.js pg driver](https://www.npmjs.com/package/pg) and the
 For a more realistic use of Sequelize with CockroachDB, see our [`examples-orms`](https://github.com/cockroachdb/examples-orms)repository.
 {{site.data.alerts.end}}
 
-
 ## Before you begin
 
 Make sure you have already [installed CockroachDB](install-cockroachdb.html).
 
-## Step 1. Install the Sequelize ORM
+## Step 1. Install the Sequelize ORM and dependencies
 
-To install Sequelize, as well as a [CockroachDB Node.js package](https://github.com/cockroachdb/sequelize-cockroachdb) that accounts for some minor differences between CockroachDB and PostgreSQL, run the following command:
+Run the following command to install Sequelize, a [CockroachDB adapter for Sequelize](https://github.com/cockroachdb/sequelize-cockroachdb), and a Postgres driver:
 
 {% include copy-clipboard.html %}
 ~~~ shell
-$ npm install sequelize sequelize-cockroachdb
+$ npm install sequelize sequelize-cockroachdb pg
 ~~~
 
-{% include {{ page.version.version }}/app/common-steps.md %}
+{% include {{ page.version.version }}/app/common-steps-secure.md %}
 
 ## Step 5. Run the Node.js code
 
-The following code uses the [Sequelize](https://sequelize.readthedocs.io/en/v3/) ORM to map Node.js-specific objects to SQL operations. Specifically, `Account.sync({force: true})` creates an `accounts` table based on the Account model (or drops and recreates the table if it already exists), `Account.bulkCreate([...])` inserts rows into the table, and `Account.findAll()` selects from the table so that balances can be printed.
+The following code uses the [Sequelize](https://sequelize.readthedocs.io/en/v3/) ORM to map Node.js-specific objects to SQL operations. Specifically:
+
+- `Account.sync({force: true})` creates an `accounts` table based on the Account model (or drops and recreates the table if it already exists).
+
+- `Account.bulkCreate([...])` inserts rows into the table.
+
+- `Account.findAll()` selects from the table so that balances can be printed.
 
 Copy the code or
 <a href="https://raw.githubusercontent.com/cockroachdb/docs/master/_includes/{{ page.version.version }}/app/sequelize-basic-sample.js" download>download it directly</a>.
@@ -60,25 +65,11 @@ The output should be:
 2 250
 ~~~
 
-To verify that the table and rows were created successfully, you can again use the [built-in SQL client](use-the-built-in-sql-client.html):
+To verify that the table and rows were created successfully, use the [built-in SQL client](use-the-built-in-sql-client.html):
 
 {% include copy-clipboard.html %}
 ~~~ shell
-$ cockroach sql --insecure -e 'SHOW TABLES' --database=bank
-~~~
-
-~~~
-+----------+
-|  Table   |
-+----------+
-| accounts |
-+----------+
-(1 row)
-~~~
-
-{% include copy-clipboard.html %}
-~~~ shell
-$ cockroach sql --insecure -e 'SELECT id, balance FROM accounts' --database=bank
+$ cockroach sql --certs-dir=certs -e 'SELECT id, balance FROM accounts' --database=bank
 ~~~
 
 ~~~
