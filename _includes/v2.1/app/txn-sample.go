@@ -34,7 +34,8 @@ func transferFunds(tx *sql.Tx, from int, to int, amount int) error {
 }
 
 func main() {
-	db, err := sql.Open("postgres", "postgresql://maxroach@localhost:26257/bank?sslmode=disable")
+	db, err := sql.Open("postgres",
+		"postgresql://maxroach@localhost:26257/bank?ssl=true&sslmode=require&sslrootcert=/tmp/certs/ca.crt&sslkey=/tmp/certs/client.maxroach.key&sslcert=/tmp/certs/client.maxroach.crt")
 	if err != nil {
 		log.Fatal("error connecting to the database: ", err)
 	}

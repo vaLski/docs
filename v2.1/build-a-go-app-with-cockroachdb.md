@@ -28,7 +28,7 @@ To install the [Go pq driver](https://godoc.org/github.com/lib/pq), run the foll
 $ go get -u github.com/lib/pq
 ~~~
 
-{% include {{ page.version.version }}/app/common-steps.md %}
+{% include {{ page.version.version }}/app/common-steps-secure.md %}
 
 ## Step 5. Run the Go code
 
@@ -60,11 +60,31 @@ Initial balances:
 2 250
 ~~~
 
+If you get the  error message
+
+~~~
+pq: Private key file has group or world access. Permissions should be u=rw (0600) or less.
+~~~
+
+you'll need to modify the file permissions on `maxroach`'s private key like so:
+
+{% include copy-clipboard.html %}
+~~~ sh
+$ chmod 600 certs/client.maxroach.key
+~~~
+
 ### Transaction (with retry logic)
 
 Next, use the following code to again connect as the `maxroach` user but this time will execute a batch of statements as an atomic transaction to transfer funds from one account to another, where all included statements are either committed or aborted.
 
 Download the <a href="https://raw.githubusercontent.com/cockroachdb/docs/master/_includes/{{ page.version.version }}/app/txn-sample.go" download><code>txn-sample.go</code></a> file, or create the file yourself and copy the code into it.
+
+To run `txn-sample.go`, you'll need to install the `crdb` package:
+
+{% include copy-clipboard.html %}
+~~~ sh
+$ go get -u github.com/cockroachdb/cockroach-go/crdb
+~~~
 
 {% include copy-clipboard.html %}
 ~~~ go
@@ -105,7 +125,7 @@ However, if you want to verify that funds were transferred from one account to a
 
 {% include copy-clipboard.html %}
 ~~~ shell
-$ cockroach sql --insecure -e 'SELECT id, balance FROM accounts' --database=bank
+$ cockroach sql --certs-dir=certs -e 'SELECT id, balance FROM accounts' --database=bank
 ~~~
 
 ~~~
