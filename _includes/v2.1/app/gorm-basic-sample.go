@@ -17,7 +17,7 @@ type Account struct {
 
 func main() {
 	// Connect to the "bank" database as the "maxroach" user.
-	const addr = "postgresql://maxroach@localhost:26257/bank?sslmode=disable"
+	const addr = "postgresql://maxroach@localhost:26257/bank?ssl=true&sslmode=require&sslrootcert=/tmp/certs/ca.crt&sslkey=/tmp/certs/client.maxroach.key&sslcert=/tmp/certs/client.maxroach.crt"
 	db, err := gorm.Open("postgres", addr)
 	if err != nil {
 		log.Fatal(err)

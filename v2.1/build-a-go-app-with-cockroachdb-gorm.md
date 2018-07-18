@@ -32,7 +32,7 @@ To install [GORM](http://jinzhu.me/gorm/), run the following command:
 $ go get -u github.com/jinzhu/gorm
 ~~~
 
-{% include {{ page.version.version }}/app/common-steps.md %}
+{% include {{ page.version.version }}/app/common-steps-secure.md %}
 
 ## Step 5. Run the Go code
 
@@ -65,21 +65,7 @@ To verify that the table and rows were created successfully, you can again use t
 
 {% include copy-clipboard.html %}
 ~~~ shell
-$ cockroach sql --insecure -e 'SHOW TABLES' --database=bank
-~~~
-
-~~~
-+----------+
-|  Table   |
-+----------+
-| accounts |
-+----------+
-(1 row)
-~~~
-
-{% include copy-clipboard.html %}
-~~~ shell
-$ cockroach sql --insecure -e 'SELECT id, balance FROM accounts' --database=bank
+$ cockroach sql --certs-dir=certs -e 'SELECT id, balance FROM accounts' --database=bank
 ~~~
 
 ~~~
