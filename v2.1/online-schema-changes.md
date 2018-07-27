@@ -10,23 +10,52 @@ Traditional, non-distributed databases cannot handle making schema changes while
 2. Make all the necessary changes while the table is locked
 3. Open up the table for writes again
 
-CockroachDB does not have these limitations.  It accepts schema changes to the live, running database.
-
-CockroachDB's schema change engine is designed to provide a simple way to update a table schema without:
+CockroachDB does not have these limitations.  Its schema change engine is designed to update table schemas without:
 
 - Downtime
 - Ad hoc sequencing of operations
 - Reliance on external tools
 - Increases in read/write latency
 
+In other words, you can change your table schema while the database is running and expect it to run the schema change as a background job while performing normally.
+
+{{site.data.alerts.callout_info}}
+This page has information about how online schema changes work.  For more information about the commands that perform the schema changes, see the documentation for [`ALTER TABLE`][alter] and its subcommands.
+{{site.data.alerts.end}}
+
 ## How online schema changes work
 
-At a high level, this is accomplished by using a bridging strategy.  The table begins in its current state, let’s call it "v1", is brought into an intermediate state (call it "v1.5"), and finally ends up with the schema changes applied, which we’ll call "v2".
+At a high level, online schema changes are accomplished by using a bridging strategy involving concurrent uses of multiple versions of the schema.  This approach allows us to roll out a new schema while the previous version is still in use.  We then backfill or delete the underlying table data as needed in the background, while the cluster is still running.
 
-Let’s look at a concrete example.  Given a table `fruits` with three columns
+The table begins in its current state, let’s call it *v1*, is then brought into an intermediate state (call it *v1.5*), and finally ends up with the schema changes applied on all nodes; we’ll call this state *v2*.
+
+The gateway node receives the [`ALTER TABLE`][alter] command from the [client][client]. Given:
+
+- The current state of the schema (*v1*)
+- And the desired end state (*v2*)
+
+the node calculates an intermediate state (*v1.5*) which will act as a bridge between them.
+
+The gateway node transmits this intermediate (*v1.5*) schema to the other nodes, which update their local caches of the schema to use *v1.5*. After a few seconds, the locally cached *v1* schemas on all of the nodes will have expired and been replaced with *v1.5*.  During this time, they continue to service reads and writes to the user as if they were still using the *v1* schema.
+
+Once all of the nodes are using the *v1.5* intermediate schema, backfilling (or deletion, depending on the statement) can start.
+
+Once the *v1.5* intermediate schema has been transmitted to all of the other nodes, each of them operate as follows:
+
+- On reads, they report to the user that they have 3 columns, as before (in *v1*).
+
+- On writes, they accept three columns as before (again from *v1*); in addition, they automatically add a fourth column `inventory_count` with a default value of 5 to the write, but without telling the user. From the user’s POV, the schema is still at *v1*.
+
+During the backfilling process, the nodes will go through and update all of the underlying table data to make sure all instances of the table are stored according to the requirements of the *v2* schema.
+
+Once backfilling is complete, all nodes will switch over to the *v2* schema, and will allow reads and writes of the table using the new schema.
+
+## Example
+
+Let’s look at an example.  Given a table `fruits` with three columns
 
 {% include copy-clipboard.html %}
-~~~
+~~~ sql
 > CREATE TABLE fruits (
       id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
       name STRING,
@@ -34,61 +63,67 @@ Let’s look at a concrete example.  Given a table `fruits` with three columns
   );
 ~~~
 
-Now let's add a fourth element, which should have a default value of 5:
+let's add a fourth schema element, a new column with a default value of 5:
 
 {% include copy-clipboard.html %}
 ~~~ sql
 > ALTER TABLE fruits ADD COLUMN inventory_count INTEGER DEFAULT 5;
 ~~~
 
-The gateway node receives the ALTER TABLE schema update command from the [client][client]. Given the current state (v1) and the desired end state (v2), it calculates an intermediate state (v1.5) which will act as a bridge between the two.
+You can check on the status of a schema change at any time using the [`SHOW JOBS`][show] statement as follows (note the "schema change" in the type column):
 
-When the coordinating node interacts with other nodes, it transmits the intermediate "v1.5" schema.  The nodes each have a local cache of the schema, which they update to v1.5.  v1.5 has the 4th column, constrained to default to 5.
+{% include copy-clipboard.html %}
+~~~ sql
+> SHOW JOBS;
+~~~
 
-The way the nodes operate using the v1.5 schema in this example is:
+~~~
++--------------------+---------------+-----------------------------------------------------------------------------+----------+-----------+----------------------------+----------------------------+----------------------------+----------------------------+--------------------+-------+----------------+
+|         id         |     type      |                                 description                                 | username |  status   |          created           |          started           |          finished          |          modified          | fraction_completed | error | coordinator_id |
++--------------------+---------------+-----------------------------------------------------------------------------+----------+-----------+----------------------------+----------------------------+----------------------------+----------------------------+--------------------+-------+----------------+
+| 368863345707909121 | SCHEMA CHANGE | ALTER TABLE test.public.fruits ADD COLUMN inventory_count INTEGER DEFAULT 5 | root     | succeeded | 2018-07-26 20:55:59.698793 | 2018-07-26 20:55:59.739032 | 2018-07-26 20:55:59.816007 | 2018-07-26 20:55:59.816008 |                  1 |       |           NULL |
++--------------------+---------------+-----------------------------------------------------------------------------+----------+-----------+----------------------------+----------------------------+----------------------------+----------------------------+--------------------+-------+----------------+
+(1 row)
+~~~
 
-- On reads, they report to the user that they have 3 columns, as before
-- On writes, they accept three columns as before, and automatically add a fourth column `inventory_count` with a default value of 5, but without telling the user. From the user’s POV, the schema is still at "v1".
-
-After 2 seconds, the locally cached v1 schemas on all of the nodes will have expired and been replaced with v1.5.  During this time, they continue to service reads and writes to the user as if they were still on the v1 schema.
-
-Now that all of the nodes are using the v1.5 intermediate schema, backfilling can start.
-
-During the backfilling process, the nodes will go through and update all of the data underlying the table to make sure all instances of the table are stored according to the requirements of the v2 schema.
-
-Once backfilling is complete, all nodes will switch over to the v2 schema, and will allow reads and writes of the latest 4-element table (with the new element meeting the constraint that it defaults to 5).
-
-This process can be visualized in the diagram below, which shows the `fruits` table schema at v1, v1.5, and v2. This example was intentionally kept simple, but the process is the same for more complex schema changes.
-
-<img src="{{ 'images/v2.1/online-schema-changes.png' | relative_url }}" alt="Online schema changes diagram" style="border:1px solid #eee;max-width:100%" />
+This example was intentionally kept simple, but the process is the same for more complex schema changes.
 
 ## Limitations
 
-There are limitations on how you can use schema changes in transactions.  This stems from the fact that schemas are cached on every node.
+Because schemas are cached on every node, there are limitations on how you can use schema changes in [transactions][txns].
 
-+ There are already 2 versions; one cached, one written. 
+Specifically, as described above in [How it works](), there are two versions of every schema: the cached (intermediate) version, and the written version.
 
-+ You can do transactions on the ones that are written, but not the ones that are cached. 
+You can do transactions on schemas that are already written, but not on cached schemas.  For example, you cannot do a [`CREATE INDEX`][create] followed immediately by a [`SELECT`][select] on that index inside the same transaction.
 
-+ This isn’t well explained in our docs. 
+This behavior is necessary because in order to support schema changes inside a transaction would mean requiring that transaction to propagate across all the nodes of a cluster.  In other words, all other transactions would have to block on the schema change, since the schema change-containing transaction would have to commit before any other transactions could make progress.
 
-In the wild this shows up like this: create index + select that references the index in the same transaction. 
+## Statements that use online schema changes
 
-+ Usability through better error messages: Today CRDB will say “index not found” or “column not found” -- however the user clearly sees column in the transaction. This is confusing 
+The following SQL statements use online schema changes to do their work:
 
-+ This isn’t as bad as it used to be because we fixed a problem in 2.1 because we can now add the create table as part of a txn. 
-
-How often do users change schemas within transactions? What is the benefit of addressing this? What should we fix, and what should we document?
-
-Can’t make this “just work” since its a txn across ALL nodes. It would be weird to make it work since all other txns would have to wait. Not worth the effort. Docs work needs to be done here.
++ The [`ALTER TABLE`][alter] subcommands
++ [`DROP INDEX`][drop]
++ ???
++ PROFIT!
 
 ## See Also
 
++ [How online schema changes are possible in CockroachDB][blog]: Blog post introducing this feature
++ [Online, asynchronous schema change in F1][f1]: Paper from Google Research describing schema changes in F1 database, which served as an inspiration for our system.
 + [ALTER TABLE][alter]
-+ [How online schema changes are possible in CockroachDB][blog]
++ [CREATE INDEX][create]
++ [DROP INDEX][drop]
 
 <!-- Links -->
 
+[alter-drop]: drop-column.html
 [alter]: alter-table.html
 [blog]: https://cockroachlabs.com/blog/how-online-schema-changes-are-possible-in-cockroachdb/
 [client]: use-the-built-in-sql-client.html
+[drop]: drop-index.html
+[create]: create-index.html
+[f1]: https://ai.google/research/pubs/pub41376
+[show]: show-jobs.html
+[txns]: transactions.html
+[select]: selection-queries.html
