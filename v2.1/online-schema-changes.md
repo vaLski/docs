@@ -62,6 +62,26 @@ This process can be visualized in the diagram below, which shows the `fruits` ta
 
 <img src="{{ 'images/v2.1/online-schema-changes.png' | relative_url }}" alt="Online schema changes diagram" style="border:1px solid #eee;max-width:100%" />
 
+## Limitations
+
+There are limitations on how you can use schema changes in transactions.  This stems from the fact that schemas are cached on every node.
+
++ There are already 2 versions; one cached, one written. 
+
++ You can do transactions on the ones that are written, but not the ones that are cached. 
+
++ This isn’t well explained in our docs. 
+
+In the wild this shows up like this: create index + select that references the index in the same transaction. 
+
++ Usability through better error messages: Today CRDB will say “index not found” or “column not found” -- however the user clearly sees column in the transaction. This is confusing 
+
++ This isn’t as bad as it used to be because we fixed a problem in 2.1 because we can now add the create table as part of a txn. 
+
+How often do users change schemas within transactions? What is the benefit of addressing this? What should we fix, and what should we document?
+
+Can’t make this “just work” since its a txn across ALL nodes. It would be weird to make it work since all other txns would have to wait. Not worth the effort. Docs work needs to be done here.
+
 ## See Also
 
 + [ALTER TABLE][alter]
