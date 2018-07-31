@@ -35,9 +35,11 @@ You'll use sample schema and data for Cockroach Lab's fictional vehicle-sharing 
 
 <img src="{{ 'images/v2.0/perf_tuning_movr_schema.png' | relative_url }}" alt="Perf tuning schema" style="max-width:100%" />
 
-{{site.data.alerts.callout_info}}
-The [`IMPORT`](import.html) feature you'll use to import the data does not support foreign keys, so you'll import the data without the [foreign key constraints](foreign-key.html) but with the secondary indexes required to add the foreign key constraints after import.
-{{site.data.alerts.end}}
+A few notes about the schema:
+
+- Each table has a compound primary key, with `city` being first in the key. Although not necessary initially in the single-region deployment, once you scale the cluster to multiple regions, these compound primary keys will enable you to [geo-partition data at the row level](partitioning.html#partition-using-primary-key) by `city`. As such, this tutorial demonstrates a deployment where the schema is designed for future scaling.
+- The [`IMPORT`](import.html) feature you'll use to import the data does not support foreign keys, so you'll import the data without [foreign key constraints](foreign-key.html). However, the import will create the secondary indexes required to add the foreign keys later.
+- The `rides` table contains both `city` and the seemingly redundant `vehicle_city`. This redundancy is necessary because, while it is not possible to apply more than one foreign key constraint to a single column, you will need to apply two foreign key constraints to the `rides` table, and each will require city as part of the constraint. The duplicate `vehicle_city`, which is kept in synch with `city` via a [`CHECK` constraint](check.html), lets you overcome [this limitation](https://github.com/cockroachdb/cockroach/issues/23580).
 
 ### Important concepts
 
@@ -112,9 +114,9 @@ Just as in the read scenario, if the write request is received by the node that 
 CockroachDB requires TCP communication on two ports:
 
 - **26257** (`tcp:26257`) for inter-node communication (i.e., working as a cluster)
-- **8080** (`tcp:8080`) for accessing the Admin UI
+- **8080** (`tcp:8080`) for accessing the Web UI
 
-Since GCE instances communicate on their internal IP addresses by default, you don't need to take any action to enable inter-node communication. However, if you want to access the Admin UI from your local network, you must [create a firewall rule for your project](https://cloud.google.com/vpc/docs/using-firewalls):
+Since GCE instances communicate on their internal IP addresses by default, you don't need to take any action to enable inter-node communication. However, if you want to access the Web UI from your local network, you must [create a firewall rule for your project](https://cloud.google.com/vpc/docs/using-firewalls):
 
 Field | Recommended Value
 ------|------------------
@@ -134,7 +136,7 @@ The **tag** feature will let you easily apply the rule to your instances.
     - Select the **us-east1-b** [zone](https://cloud.google.com/compute/docs/regions-zones/).
     - Use the `n1-standard-4` machine type (4 vCPUs, 15 GB memory).
     - [Create and mount a local SSD](https://cloud.google.com/compute/docs/disks/local-ssd#create_local_ssd).
-    - To apply the Admin UI firewall rule you created earlier, click **Management, disk, networking, SSH keys**, select the **Networking** tab, and then enter `cockroachdb` in the **Network tags** field.
+    - To apply the Web UI firewall rule you created earlier, click **Management, disk, networking, SSH keys**, select the **Networking** tab, and then enter `cockroachdb` in the **Network tags** field.
 
 2. Note the internal IP address of each `n1-standard-4` instance. You'll need these addresses when starting the CockroachDB nodes.
 
@@ -185,7 +187,7 @@ The **tag** feature will let you easily apply the rule to your instances.
     $ cockroach init --insecure --host=localhost
     ~~~
 
-    Each node then prints helpful details to the [standard output](start-a-node.html#standard-output), such as the CockroachDB version, the URL for the admin UI, and the SQL URL for clients.
+    Each node then prints helpful details to the [standard output](start-a-node.html#standard-output), such as the CockroachDB version, the URL for the Web UI, and the SQL URL for clients.
 
 ### Step 4. Import the Movr dataset
 
@@ -365,6 +367,10 @@ The **tag** feature will let you easily apply the rule to your instances.
     FOREIGN KEY (vehicle_city, vehicle_id)
     REFERENCES vehicles (city, id);
     ~~~
+
+    {{site.data.alerts.callout_info}}
+    It is not currently possible to apply more than one foreign key constraint to a single column. For this reason, the `rides` table contains both `city` and `vehicle_city`, which is a duplicate of `city` kept in sync via a `CHECK` constraint. The first foreign key constraint on `rides` applies to `city` and `rider_id`, and the second foreign key constraint on `rides` applies to `vehicle_city` and `vehicle_id`. .  
+    {{site.data.alerts.end}}
 
     **Add a note about why we need vehicle_city and link to ticket. Basically, we can't have 2 foreign keys constraints on the same column (city). So we duplicate city as vehicle_city and add check constraint to ensure that they are identical. https://github.com/cockroachdb/cockroach/issues/23580**
 
@@ -776,11 +782,7 @@ $ cockroach sql \
 (1 row)
 ~~~
 
-The results above tell us that the `rides` table is split across 7 ranges, with 1 range's leaseholder on node 3 and the leaseholders for the rest of the ranges on node 2, and the leaseholder of the single range for `users` is on node 1.
-
-With this information, we can visualize what's happening, assuming the request is sent to node 1 and ignoring non-involved ranges:
-
-<img src="{{ 'images/v2.0/perf_tuning_join1.png' | relative_url }}" alt="Perf tuning concepts" style="max-width:100%" />
+The results above tell us that the `rides` table is split across 7 ranges, with one range's leaseholder on node 3 and the leaseholders for the rest of the ranges on node 2, and the leaseholder of the single range for `users` is on node 1.
 
 Now, given the `WHERE` condition of the join, the full table scan of `rides`, across all of its 7 ranges, is particularly wasteful. To speed up the query, you can create a secondary index on the `WHERE` condition (`rides.start_time`) storing the join key (`rides.rider_id`) and then re-run the join:
 
@@ -882,11 +884,7 @@ $ cockroach sql \
 (3 rows)
 ~~~
 
-This tells us the the index is stored in 3 ranges, with the leaseholders for all of them on node 1. We already know that the leaseholder for the `users` table is also on node 1.
-
-With this information, we can visualize what's happening now, still assuming the request is sent to node 1 and ignoring non-involved ranges:
-
-<img src="{{ 'images/v2.0/perf_tuning_join2.png' | relative_url }}" alt="Perf tuning concepts" style="max-width:100%" />
+This tells us that the index is stored in 3 ranges, with the leaseholders for all of them on node 1. We already know that the leaseholder for the `users` table is also on node 1.
 
 #### Using `IN (list)` with a subquery
 
@@ -972,7 +970,7 @@ GROUP BY vehicle_id;"
 (21 rows)
 ~~~
 
-This is a complex query plan, but the important thing to note is the full table scan of `rides@primary` above the `subquery`. This shows you that, after the subquery returns the IDs of the top 5 vehicles, CockroachDB scans the entire primary index to find the rows with `max(end_time)` for each `vehicle_id`, although you might expect CockroachDB to more efficiently use the secondary index on `vehicle_id`.
+This is a complex query plan, but the important thing to note is the full table scan of `rides@primary` above the `subquery`. This shows you that, after the subquery returns the IDs of the top 5 vehicles, CockroachDB scans the entire primary index to find the rows with `max(end_time)` for each `vehicle_id`, although you might expect CockroachDB to more efficiently use the secondary index on `vehicle_id` (CockroachDB is working to remove this limitation in a future version). 
 
 #### Using `IN (list)` with explicit values
 
